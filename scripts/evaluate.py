@@ -70,7 +70,7 @@ def main(args):
     # load_data if do reconstruction.
     model_path = Path(args.model_path)
     model, test_loader, cfg = load_model(
-        model_path, load_data=True)
+        model_path, load_data=True, w_type=args.w_type)
 
     if torch.cuda.is_available():
         model.to('cuda')
@@ -109,5 +109,6 @@ if __name__ == '__main__':
     parser.add_argument('--step_lr', default=-1, type=float)
     parser.add_argument('--num_evals', default=1, type=int)
     parser.add_argument('--label', default='')
+    parser.add_argument('--w_type', action="store_true")
     args = parser.parse_args()
     main(args)

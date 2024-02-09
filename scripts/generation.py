@@ -129,7 +129,7 @@ def main(args):
     # load_data if do reconstruction.
     model_path = Path(args.model_path)
     model, _, cfg = load_model(
-        model_path, load_data=False)
+        model_path, load_data=False, w_type=True)
 
     if torch.cuda.is_available():
         model.to('cuda')
