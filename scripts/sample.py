@@ -137,6 +137,9 @@ def main(args):
     crystal_list = get_crystals_list(frac_coords, atom_types, lengths, angles, num_atoms)
 
     strcuture_list = p_map(get_pymatgen, crystal_list)
+    end_time = time.time()
+    print(f"Total elapsed time: {end_time - start_time} s")
+    print(f"Throughput: {args.num_evals / (end_time - start_time)} structures/s")
 
     for i,structure in enumerate(strcuture_list):
         tar_file = os.path.join(tar_dir, f"{args.formula}_{i+1}.cif")

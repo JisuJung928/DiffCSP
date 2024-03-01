@@ -20,5 +20,6 @@ defaults:
   - model: diffusion
   - optim: default
   - train: default
+  - ckpt: mp_csp
 #    Decomment this parameter to get parallel job running
   # - override hydra/launcher: joblib

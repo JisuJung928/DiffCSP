@@ -88,15 +88,38 @@ def run(cfg: DictConfig) -> None:
         cfg.data.datamodule, _recursive_=False
     )
 
+    # Load checkpoint (if exist)
+    ckpts = list(hydra_dir.glob('*.ckpt'))
+    if not cfg.train.fine_tuning.checkpoint is None:
+        ckpt = cfg.train.fine_tuning.checkpoint
+        hydra.utils.log.info(f"found checkpoint: {ckpt}")
+    elif len(ckpts) > 0:
+        ckpt_epochs = np.array([int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
+        ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
+        hydra.utils.log.info(f"found checkpoint: {ckpt}")
+    else:
+        ckpt = None
+
+    # Store the YaML config separately into the wandb dir
+    yaml_conf: str = OmegaConf.to_yaml(cfg=cfg)
+    (hydra_dir / "hparams.yaml").write_text(yaml_conf)
+
     # Instantiate model
     hydra.utils.log.info(f"Instantiating <{cfg.model._target_}>")
-    model: pl.LightningModule = hydra.utils.instantiate(
-        cfg.model,
-        optim=cfg.optim,
-        data=cfg.data,
-        logging=cfg.logging,
-        _recursive_=False,
-    )
+    if ckpt is None:
+        model: pl.LightningModule = hydra.utils.instantiate(
+            cfg.model,
+            optim=cfg.optim,
+            data=cfg.data,
+            logging=cfg.logging,
+            _recursive_=False,
+        )
+    else:
+        if "w_type" in cfg.model._target_:
+            from diffcsp.pl_modules.diffusion_w_type import CSPDiffusion
+        else:
+            from diffcsp.pl_modules.diffusion import CSPDiffusion
+        model = CSPDiffusion.load_from_checkpoint(ckpt, strict=False, hparams=OmegaConf.load(hydra_dir / "hparams.yaml"))
 
     # Pass scaler from datamodule to model
     hydra.utils.log.info(f"Passing scaler from datamodule to model <{datamodule.scaler}>")
@@ -108,27 +131,15 @@ def run(cfg: DictConfig) -> None:
     # Instantiate the callbacks
     callbacks: List[Callback] = build_callbacks(cfg=cfg)
 
-    # Store the YaML config separately into the wandb dir
-    yaml_conf: str = OmegaConf.to_yaml(cfg=cfg)
-    (hydra_dir / "hparams.yaml").write_text(yaml_conf)
-
-    # Load checkpoint (if exist)
-    ckpts = list(hydra_dir.glob('*.ckpt'))
-    if len(ckpts) > 0:
-        ckpt_epochs = np.array([int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts])
-        ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
-        hydra.utils.log.info(f"found checkpoint: {ckpt}")
-    else:
-        ckpt = None
-          
     hydra.utils.log.info("Instantiating the Trainer")
     trainer = pl.Trainer(
         default_root_dir=hydra_dir,
         callbacks=callbacks,
         deterministic=cfg.train.deterministic,
         check_val_every_n_epoch=cfg.logging.val_check_interval,
-        progress_bar_refresh_rate=cfg.logging.progress_bar_refresh_rate,
-        resume_from_checkpoint=ckpt,
+        log_every_n_steps=cfg.logging.progress_bar_refresh_rate,
+    #    progress_bar_refresh_rate=cfg.logging.progress_bar_refresh_rate,
+    #    resume_from_checkpoint=ckpt,
         **cfg.train.pl_trainer,
     )
 

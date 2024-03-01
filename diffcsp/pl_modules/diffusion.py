@@ -30,10 +30,11 @@ MAX_ATOMIC_NUM=100
 class BaseModule(pl.LightningModule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__()
-        # populate self.hparams with args and kwargs automagically!
+        # populate self.hparams.model with args and kwargs automagically!
         self.save_hyperparameters()
-        if hasattr(self.hparams, "model"):
-            self._hparams = self.hparams.model
+        print(self.hparams)
+        if "hparams" in self.hparams:
+            self._hparams = self.hparams["hparams"]
 
     def configure_optimizers(self):
         opt = hydra.utils.instantiate(
@@ -44,7 +45,7 @@ class BaseModule(pl.LightningModule):
         scheduler = hydra.utils.instantiate(
             self.hparams.optim.lr_scheduler, optimizer=opt
         )
-        return {"optimizer": opt, "lr_scheduler": scheduler, "monitor": "val_loss"}
+        return {"optimizer": opt, "lr_scheduler": {"scheduler": scheduler, "monitor": "val_loss"}}
 
 
 ### Model definition
@@ -69,13 +70,13 @@ class CSPDiffusion(BaseModule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         
-        self.decoder = hydra.utils.instantiate(self.hparams.decoder, latent_dim = self.hparams.latent_dim + self.hparams.time_dim, _recursive_=False)
-        self.beta_scheduler = hydra.utils.instantiate(self.hparams.beta_scheduler)
-        self.sigma_scheduler = hydra.utils.instantiate(self.hparams.sigma_scheduler)
-        self.time_dim = self.hparams.time_dim
+        self.decoder = hydra.utils.instantiate(self.hparams.model.decoder, latent_dim = self.hparams.model.latent_dim + self.hparams.model.time_dim, _recursive_=False)
+        self.beta_scheduler = hydra.utils.instantiate(self.hparams.model.beta_scheduler)
+        self.sigma_scheduler = hydra.utils.instantiate(self.hparams.model.sigma_scheduler)
+        self.time_dim = self.hparams.model.time_dim
         self.time_embedding = SinusoidalTimeEmbeddings(self.time_dim)
-        self.keep_lattice = self.hparams.cost_lattice < 1e-5
-        self.keep_coords = self.hparams.cost_coord < 1e-5
+        self.keep_lattice = self.hparams.model.cost_lattice < 1e-5
+        self.keep_coords = self.hparams.model.cost_coord < 1e-5
 
     def forward(self, batch):
 
@@ -117,8 +118,8 @@ class CSPDiffusion(BaseModule):
         loss_coord = F.mse_loss(pred_x, tar_x)
 
         loss = (
-            self.hparams.cost_lattice * loss_lattice +
-            self.hparams.cost_coord * loss_coord)
+            self.hparams.model.cost_lattice * loss_lattice +
+            self.hparams.model.cost_coord * loss_coord)
 
         return {
             'loss' : loss,
@@ -292,5 +293,3 @@ class CSPDiffusion(BaseModule):
         }
 
         return log_dict, loss
-
-    

@@ -6,6 +6,7 @@ from tqdm import tqdm
 from glob import glob
 from itertools import chain, combinations
 
+from ase.io import read
 from pymatgen.core import Structure
 from pymatgen.analysis.structure_matcher import StructureMatcher
 
@@ -25,8 +26,16 @@ def make_list(cif_list):
     if r > rank:
         end += 1
     for cif in tqdm(cif_list[begin:end]):
-        key1 = int(cif.replace(".", "_").split("_")[1])
-        structure1 = Structure.from_file(cif)
+        key1 = int(cif.split("/")[0])
+        if cif.endswith("dat"):
+            ase_structure = read(cif, format='lammps-data', atom_style='atomic', parallel=False)
+        # 'extxyz'
+        else:
+            ase_structure = read(cif, format='extxyz', parallel=False)
+        lattice = ase_structure.cell
+        positions = ase_structure.positions
+        symbols = ase_structure.get_chemical_symbols()
+        structure1 = Structure(lattice, symbols, positions)
         if len(index_list) == 0:
             index_list.append([key1])
             structure_list.append([structure1])
@@ -81,33 +90,6 @@ def merge_list(unique_index_list, unique_structure_list):
                     break
             if overlap:
                 break
-
-
-#    group_num = len(unique_index_list)
-#
-#    rank = MPI.COMM_WORLD.Get_rank()
-#    size = MPI.COMM_WORLD.Get_size()
-#    q = group_num // size
-#    r = group_num % size
-#    begin = rank * q + min(rank, r)
-#    end = begin + q
-#    if r > rank:
-#        end += 1
-#    overlap_list = []
-#
-#    for group1 in tqdm(np.arange(group_num)[begin:end]):
-#        max_group_num = max([len(indices) for group, indices in enumerate(unique_index_list) if group != group1])
-#        for structure1 in unique_structure_list[group1]:
-#            for index in range(max_group_num):
-#                for group2, structure2_list in enumerate(unique_structure_list):
-#                    if (group1 == group2) or ({group1, group2} in overlap_list):
-#                        continue
-#                    try:
-#                        structure2 = structure2_list[index]
-#                    except:
-#                        continue
-#                    if matcher.fit(structure1, structure2, symmetric=True):
-#                        overlap_list.append({group1, group2})
 
     def find(x, parent):
         """Find the root of the set that contains x."""
@@ -166,13 +148,11 @@ def merge_list(unique_index_list, unique_structure_list):
 
 def main():
     # make structure groups
-    cif_list = np.array(glob("*.cif"))
-    index_list = []
-    for cif in cif_list:
-        index_list.append(int(cif.replace(".", "_").split("_")[1]))
-    index_list = np.array(index_list)
-    cif_list = cif_list[np.argsort(index_list)][:int(sys.argv[1])]
-    
+    cif_list = []
+    with open("final.dat", "r") as fp:
+        for line in fp:
+            cif_list.append(line.split()[-1])
+
     index_list, structure_list = make_list(cif_list)
 
     # allgather groups
@@ -185,9 +165,9 @@ def main():
     merge_list(unique_index_list, unique_structure_list)
 
     if MPI.COMM_WORLD.Get_rank() == 0:
-        with open(f"unique_index_list_{int(sys.argv[1])}.pickle", "wb") as fp:
+        with open("unique_index_list_final.pickle", "wb") as fp:
             pickle.dump(unique_index_list, fp)
-        with open(f"unique_structure_list_{int(sys.argv[1])}.pickle", "wb") as fp:
+        with open("unique_structure_list_final.pickle", "wb") as fp:
             pickle.dump(unique_structure_list, fp)
 
         print(f"The number of unique structures: {len(unique_index_list)}")

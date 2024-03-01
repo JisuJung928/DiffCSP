@@ -93,13 +93,13 @@ def load_config(model_path):
 def load_model(model_path, load_data=False, testing=True, w_type=False):
     with initialize_config_dir(str(model_path)):
         cfg = compose(config_name='hparams')
-        model = hydra.utils.instantiate(
-            cfg.model,
-            optim=cfg.optim,
-            data=cfg.data,
-            logging=cfg.logging,
-            _recursive_=False,
-        )
+#        model = hydra.utils.instantiate(
+#            cfg.model,
+#            optim=cfg.optim,
+#            data=cfg.data,
+#            logging=cfg.logging,
+#            _recursive_=False,
+#        )
         ckpts = list(model_path.glob('*.ckpt'))
         if len(ckpts) > 0:
             ckpt = None
@@ -110,12 +110,13 @@ def load_model(model_path, load_data=False, testing=True, w_type=False):
                 ckpt_epochs = np.array(
                     [int(ckpt.parts[-1].split('-')[0].split('=')[1]) for ckpt in ckpts if 'last' not in ckpt.parts[-1]])
                 ckpt = str(ckpts[ckpt_epochs.argsort()[-1]])
-        hparams = os.path.join(model_path, "hparams.yaml")
+#        hparams = os.path.join(model_path, "hparams.yaml")
         if w_type:
             from diffcsp.pl_modules.diffusion_w_type import CSPDiffusion
         else:
             from diffcsp.pl_modules.diffusion import CSPDiffusion
-        model = CSPDiffusion.load_from_checkpoint(ckpt, hparams_file=hparams, strict=False)
+        print(cfg)
+        model = CSPDiffusion.load_from_checkpoint(ckpt, hparams_file=model_path / 'hparams.yaml', strict=False)
         try:
             model.lattice_scaler = torch.load(model_path / 'lattice_scaler.pt')
             model.scaler = torch.load(model_path / 'prop_scaler.pt')
