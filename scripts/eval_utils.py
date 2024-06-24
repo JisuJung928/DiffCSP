@@ -115,7 +115,6 @@ def load_model(model_path, load_data=False, testing=True, w_type=False):
             from diffcsp.pl_modules.diffusion_w_type import CSPDiffusion
         else:
             from diffcsp.pl_modules.diffusion import CSPDiffusion
-        print(cfg)
         model = CSPDiffusion.load_from_checkpoint(ckpt, hparams_file=model_path / 'hparams.yaml', strict=False)
         try:
             model.lattice_scaler = torch.load(model_path / 'lattice_scaler.pt')

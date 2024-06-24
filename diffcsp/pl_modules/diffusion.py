@@ -32,7 +32,6 @@ class BaseModule(pl.LightningModule):
         super().__init__()
         # populate self.hparams.model with args and kwargs automagically!
         self.save_hyperparameters()
-        print(self.hparams)
         if "hparams" in self.hparams:
             self._hparams = self.hparams["hparams"]
 

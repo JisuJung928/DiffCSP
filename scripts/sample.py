@@ -14,6 +14,7 @@ from pymatgen.core.structure import Structure
 from pymatgen.core.lattice import Lattice
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.io.cif import CifWriter
+from pymatgen.core.trajectory import Trajectory
 from pyxtal.symmetry import Group
 import chemparse
 import numpy as np
@@ -54,6 +55,11 @@ def diffusion(loader, model, step_lr):
     atom_types = []
     lattices = []
     input_data_list = []
+
+    all_frac_coords = []
+    all_num_atoms = []
+    all_atom_types = []
+    all_lattices = []
     for idx, batch in enumerate(loader):
 
         if torch.cuda.is_available():
@@ -64,14 +70,24 @@ def diffusion(loader, model, step_lr):
         atom_types.append(outputs['atom_types'].detach().cpu())
         lattices.append(outputs['lattices'].detach().cpu())
 
+        all_frac_coords.append(traj['all_frac_coords'].detach().cpu())
+        all_num_atoms.append(traj['num_atoms'].detach().cpu())
+        all_atom_types.append(traj['atom_types'].detach().cpu())
+        all_lattices.append(traj['all_lattices'].detach().cpu())
+
     frac_coords = torch.cat(frac_coords, dim=0)
     num_atoms = torch.cat(num_atoms, dim=0)
     atom_types = torch.cat(atom_types, dim=0)
     lattices = torch.cat(lattices, dim=0)
     lengths, angles = lattices_to_params_shape(lattices)
 
+    all_frac_coords = torch.stack(all_frac_coords)
+    all_num_atoms = torch.stack(all_num_atoms)
+    all_atom_types = torch.stack(all_atom_types)
+    all_lattices = torch.stack(all_lattices)
+
     return (
-        frac_coords, atom_types, lattices, lengths, angles, num_atoms
+        frac_coords, atom_types, lattices, lengths, angles, num_atoms, all_frac_coords, all_num_atoms, all_atom_types, all_lattices
     )
 
 class SampleDataset(Dataset):
@@ -132,11 +148,25 @@ def main(args):
     test_loader = DataLoader(test_set, batch_size = min(args.batch_size, args.num_evals))
 
     start_time = time.time()
-    (frac_coords, atom_types, lattices, lengths, angles, num_atoms) = diffusion(test_loader, model, args.step_lr)
+    (frac_coords, atom_types, lattices, lengths, angles, num_atoms, all_frac_coords, all_num_atoms, all_atom_types, all_lattices) = diffusion(test_loader, model, args.step_lr)
 
     crystal_list = get_crystals_list(frac_coords, atom_types, lengths, angles, num_atoms)
 
     strcuture_list = p_map(get_pymatgen, crystal_list)
+
+    trajectory_list = []
+    for batch_idx, (frac_coords, num_atoms, atom_types, lattices) in enumerate(zip(all_frac_coords, all_num_atoms, all_atom_types, all_lattices)):
+        print(lattices.shape)
+        for crystal_idx in range(num_atoms.size()[0]):
+            trajectory_list.append(
+                Trajectory(
+                    species=atom_types.narrow(0, crystal_idx * num_atoms[0], num_atoms[0]),
+                    coords=frac_coords.narrow(1, crystal_idx * num_atoms[0], num_atoms[0]),
+                    lattice=lattices[:, crystal_idx, :, :],
+                    constant_lattice=False
+                )
+            )
+
     end_time = time.time()
     print(f"Total elapsed time: {end_time - start_time} s")
     print(f"Throughput: {args.num_evals / (end_time - start_time)} structures/s")
@@ -148,6 +178,8 @@ def main(args):
             writer.write_file(tar_file)
         else:
             print(f"{i+1} Error Structure.")
+        tar_file = os.path.join(tar_dir, f"{args.formula}_{i+1}.XDATCAR")
+        trajectory_list[i].write_Xdatcar(tar_file)
       
 
 
